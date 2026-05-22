@@ -70,6 +70,22 @@ AdminManagementWindow::~AdminManagementWindow()
 {
 }
 
+void AdminManagementWindow::showAccountsTab()
+{
+    if (tabWidget && accountsTab) {
+        tabWidget->setCurrentWidget(accountsTab);
+        refreshAccountsData();
+    }
+}
+
+void AdminManagementWindow::showCustomersTab()
+{
+    if (tabWidget && customersTab) {
+        tabWidget->setCurrentWidget(customersTab);
+        refreshCustomersData();
+    }
+}
+
 void AdminManagementWindow::setupUI()
 {
     // Create main frame

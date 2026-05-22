@@ -107,6 +107,8 @@ protected:
 public:
     explicit AdminManagementWindow(QWidget *parent = nullptr);
     ~AdminManagementWindow();
+    void showAccountsTab();
+    void showCustomersTab();
 
 private slots:
     void onAddCustomerClicked();

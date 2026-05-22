@@ -5,9 +5,14 @@
 #include "gui/AdminManagementWindow.h"
 #include "gui/ReportsWindow.h"
 #include <QApplication>
+#include <QComboBox>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QFile>
 #include <QFileDialog>
 #include <QGuiApplication>
 #include <QInputDialog>
+#include <QLineEdit>
 #include <QMessageBox>
 #include <QKeyEvent>
 #include <QHeaderView>
@@ -15,6 +20,10 @@
 #include <QLocale>
 #include <QScreen>
 #include <QSplitter>
+#include <QSqlDatabase>
+#include <QSqlError>
+#include <QSqlQuery>
+#include <QTextStream>
 #include <QGraphicsDropShadowEffect>
 
 AdminDashboard::AdminDashboard(int userId, const QString& username, QWidget *parent)
@@ -781,6 +790,11 @@ void AdminDashboard::showManageCustomersDialog()
 
 void AdminDashboard::showManageAccountsDialog()
 {
+    AdminManagementWindow dialog(this);
+    dialog.showAccountsTab();
+    dialog.exec();
+    return;
+
     QMessageBox::information(this, "Manage Accounts", 
                              "Account management functionality would be implemented here.\n\n"
                              "This would include:\n"
@@ -862,6 +876,186 @@ void AdminDashboard::showBackupDialog()
 
 void AdminDashboard::showLogsDialog()
 {
+    QDialog dialog(this);
+    dialog.setWindowTitle("System Logs");
+    dialog.setMinimumSize(1000, 650);
+    dialog.resize(1150, 750);
+
+    auto* layout = new QVBoxLayout(&dialog);
+    auto* filterLayout = new QHBoxLayout();
+
+    auto* searchEdit = new QLineEdit(&dialog);
+    searchEdit->setPlaceholderText("Search logs by user, action, description, IP, or source...");
+
+    auto* statusFilter = new QComboBox(&dialog);
+    statusFilter->addItem("All Statuses", "ALL");
+    statusFilter->addItem("Success", "SUCCESS");
+    statusFilter->addItem("Failed", "FAILED");
+    statusFilter->addItem("Warning", "WARNING");
+
+    auto* refreshButton = new QPushButton("Refresh", &dialog);
+    auto* exportButton = new QPushButton("Export CSV", &dialog);
+
+    filterLayout->addWidget(searchEdit, 1);
+    filterLayout->addWidget(statusFilter);
+    filterLayout->addWidget(refreshButton);
+    filterLayout->addWidget(exportButton);
+
+    auto* logsTable = new QTableWidget(&dialog);
+    logsTable->setColumnCount(7);
+    logsTable->setHorizontalHeaderLabels({"Time", "User", "Action", "Status", "IP Address", "Source", "Details"});
+    logsTable->horizontalHeader()->setStretchLastSection(true);
+    logsTable->verticalHeader()->setVisible(false);
+    logsTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+    logsTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    logsTable->setAlternatingRowColors(true);
+    logsTable->setSortingEnabled(true);
+    logsTable->setColumnWidth(0, 150);
+    logsTable->setColumnWidth(1, 130);
+    logsTable->setColumnWidth(2, 150);
+    logsTable->setColumnWidth(3, 90);
+    logsTable->setColumnWidth(4, 120);
+    logsTable->setColumnWidth(5, 90);
+
+    auto* buttonBox = new QDialogButtonBox(QDialogButtonBox::Close, &dialog);
+    connect(buttonBox, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+
+    layout->addLayout(filterLayout);
+    layout->addWidget(logsTable);
+    layout->addWidget(buttonBox);
+
+    auto applyFilters = [logsTable, searchEdit, statusFilter]() {
+        const QString searchText = searchEdit->text().trimmed().toLower();
+        const QString selectedStatus = statusFilter->currentData().toString();
+
+        for (int row = 0; row < logsTable->rowCount(); ++row) {
+            bool matchesText = searchText.isEmpty();
+            for (int col = 0; col < logsTable->columnCount() && !matchesText; ++col) {
+                QTableWidgetItem* item = logsTable->item(row, col);
+                matchesText = item && item->text().toLower().contains(searchText);
+            }
+
+            QTableWidgetItem* statusItem = logsTable->item(row, 3);
+            const bool matchesStatus = selectedStatus == "ALL" ||
+                (statusItem && statusItem->text().compare(selectedStatus, Qt::CaseInsensitive) == 0);
+            logsTable->setRowHidden(row, !(matchesText && matchesStatus));
+        }
+    };
+
+    auto loadLogs = [this, logsTable, applyFilters]() {
+        logsTable->setSortingEnabled(false);
+        logsTable->setRowCount(0);
+
+        QSqlDatabase db = QSqlDatabase::database();
+        if (!db.isValid() || !db.isOpen()) {
+            QMessageBox::warning(this, "System Logs", "Database connection is not available.");
+            logsTable->setSortingEnabled(true);
+            return;
+        }
+
+        QSqlQuery query(db);
+        query.prepare(
+            "SELECT l.timestamp AS event_time, COALESCE(u.username, 'System') AS username, "
+            "l.action AS action, l.description AS description, l.status AS status, "
+            "COALESCE(l.ip_address, '') AS ip_address, 'Audit' AS source "
+            "FROM audit_logs l "
+            "LEFT JOIN users u ON u.user_id = l.user_id "
+            "UNION ALL "
+            "SELECT f.attempt_time AS event_time, f.username AS username, "
+            "'Failed Login' AS action, f.reason AS description, 'FAILED' AS status, "
+            "COALESCE(f.ip_address, '') AS ip_address, 'Security' AS source "
+            "FROM failed_login_attempts f "
+            "ORDER BY event_time DESC "
+            "LIMIT 500");
+
+        if (!query.exec()) {
+            QMessageBox::warning(this, "System Logs", "Failed to load logs:\n" + query.lastError().text());
+            logsTable->setSortingEnabled(true);
+            return;
+        }
+
+        int row = 0;
+        while (query.next()) {
+            logsTable->insertRow(row);
+            const QStringList values = {
+                query.value("event_time").toString(),
+                query.value("username").toString(),
+                query.value("action").toString(),
+                query.value("status").toString(),
+                query.value("ip_address").toString(),
+                query.value("source").toString(),
+                query.value("description").toString()
+            };
+
+            for (int col = 0; col < values.size(); ++col) {
+                auto* item = new QTableWidgetItem(values[col]);
+                if (col == 3) {
+                    const QString value = values[col].toUpper();
+                    if (value == "SUCCESS") {
+                        item->setForeground(QBrush(QColor("#2e7d32")));
+                    } else if (value == "FAILED") {
+                        item->setForeground(QBrush(QColor("#d32f2f")));
+                    } else {
+                        item->setForeground(QBrush(QColor("#f57c00")));
+                    }
+                }
+                logsTable->setItem(row, col, item);
+            }
+            ++row;
+        }
+
+        logsTable->setSortingEnabled(true);
+        applyFilters();
+    };
+
+    auto exportLogs = [this, logsTable]() {
+        const QString fileName = QFileDialog::getSaveFileName(
+            this,
+            "Export Logs",
+            QString("system_logs_%1.csv").arg(QDateTime::currentDateTime().toString("yyyyMMdd_hhmmss")),
+            "CSV Files (*.csv)");
+
+        if (fileName.isEmpty()) {
+            return;
+        }
+
+        QFile file(fileName);
+        if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+            QMessageBox::warning(this, "Export Logs", "Unable to write the selected file.");
+            return;
+        }
+
+        QTextStream out(&file);
+        QStringList headers;
+        for (int col = 0; col < logsTable->columnCount(); ++col) {
+            headers << logsTable->horizontalHeaderItem(col)->text();
+        }
+        out << headers.join(',') << '\n';
+
+        for (int row = 0; row < logsTable->rowCount(); ++row) {
+            if (logsTable->isRowHidden(row)) {
+                continue;
+            }
+
+            QStringList rowValues;
+            for (int col = 0; col < logsTable->columnCount(); ++col) {
+                QString value = logsTable->item(row, col) ? logsTable->item(row, col)->text() : QString();
+                value.replace('"', "\"\"");
+                rowValues << QString("\"%1\"").arg(value);
+            }
+            out << rowValues.join(',') << '\n';
+        }
+    };
+
+    connect(refreshButton, &QPushButton::clicked, &dialog, loadLogs);
+    connect(exportButton, &QPushButton::clicked, &dialog, exportLogs);
+    connect(searchEdit, &QLineEdit::textChanged, &dialog, applyFilters);
+    connect(statusFilter, &QComboBox::currentIndexChanged, &dialog, applyFilters);
+
+    loadLogs();
+    dialog.exec();
+    return;
+
     QMessageBox::information(this, "System Logs", 
                              "System logs functionality would be implemented here.\n\n"
                              "This would include:\n"
