@@ -1,0 +1,12 @@
+.qtcreator
+build/
+build_*/
+*.zip
+CMakeLists_backup.txt
+CMakeLists_minimal.txt
+CMakeLists_simple.txt
+CMakeLists_test.txt
+src/main_minimal.cpp
+resources/
+QUICK_BUILD_GUIDE.md
+BUILD_FIX.md
