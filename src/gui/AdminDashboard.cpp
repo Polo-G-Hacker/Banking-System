@@ -37,7 +37,13 @@ AdminDashboard::AdminDashboard(int userId, const QString& username, QWidget *par
     , securityMenu(nullptr)
     , helpMenu(nullptr)
     , centralWidget(nullptr)
+    , centralStack(nullptr)
     , mainSplitter(nullptr)
+    , logsPage(nullptr)
+    , logsTable(nullptr)
+    , logsSearchEdit(nullptr)
+    , logsStatusFilter(nullptr)
+    , managementPage(nullptr)
     , leftPanel(nullptr)
     , leftScrollArea(nullptr)
     , leftPanelContent(nullptr)
@@ -129,9 +135,12 @@ void AdminDashboard::setupUI()
     setupMenuBar();
     setupStatusBar();
     
-    // Create central widget
-    centralWidget = new QWidget(this);
-    setCentralWidget(centralWidget);
+    // Create central stack
+    centralStack = new QStackedWidget(this);
+    setCentralWidget(centralStack);
+
+    centralWidget = new QWidget();
+    centralStack->addWidget(centralWidget);
     
     // Create main splitter
     mainSplitter = new QSplitter(Qt::Horizontal, centralWidget);
@@ -151,6 +160,70 @@ void AdminDashboard::setupUI()
     QVBoxLayout* mainLayout = new QVBoxLayout(centralWidget);
     mainLayout->setContentsMargins(10, 10, 10, 10);
     mainLayout->addWidget(mainSplitter);
+
+    managementPage = new AdminManagementWindow(this);
+    managementPage->setWindowFlags(Qt::Widget);
+    managementPage->setModal(false);
+    centralStack->addWidget(managementPage);
+
+    setupLogsPage();
+}
+
+void AdminDashboard::setupLogsPage()
+{
+    logsPage = new QWidget();
+    auto* layout = new QVBoxLayout(logsPage);
+    auto* headerLayout = new QHBoxLayout();
+    auto* titleLabel = new QLabel("System Logs");
+    titleLabel->setObjectName("sectionTitleLabel");
+    auto* backButton = new QPushButton("Back to Dashboard");
+    connect(backButton, &QPushButton::clicked, this, &AdminDashboard::showDashboardPage);
+    headerLayout->addWidget(titleLabel);
+    headerLayout->addStretch();
+    headerLayout->addWidget(backButton);
+
+    auto* filterLayout = new QHBoxLayout();
+    logsSearchEdit = new QLineEdit();
+    logsSearchEdit->setPlaceholderText("Search logs by user, action, description, IP, or source...");
+    logsStatusFilter = new QComboBox();
+    logsStatusFilter->addItem("All Statuses", "ALL");
+    logsStatusFilter->addItem("Success", "SUCCESS");
+    logsStatusFilter->addItem("Failed", "FAILED");
+    logsStatusFilter->addItem("Warning", "WARNING");
+    auto* refreshButton = new QPushButton("Refresh");
+    auto* exportButton = new QPushButton("Export CSV");
+    filterLayout->addWidget(logsSearchEdit, 1);
+    filterLayout->addWidget(logsStatusFilter);
+    filterLayout->addWidget(refreshButton);
+    filterLayout->addWidget(exportButton);
+
+    logsTable = new QTableWidget();
+    logsTable->setColumnCount(7);
+    logsTable->setHorizontalHeaderLabels({"Time", "User", "Action", "Status", "IP Address", "Source", "Details"});
+    logsTable->horizontalHeader()->setStretchLastSection(true);
+    logsTable->verticalHeader()->setVisible(false);
+    logsTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+    logsTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    logsTable->setAlternatingRowColors(true);
+    logsTable->setSortingEnabled(true);
+    logsTable->setColumnWidth(0, 150);
+    logsTable->setColumnWidth(1, 130);
+    logsTable->setColumnWidth(2, 150);
+    logsTable->setColumnWidth(3, 90);
+    logsTable->setColumnWidth(4, 120);
+    logsTable->setColumnWidth(5, 90);
+
+    layout->setContentsMargins(20, 20, 20, 20);
+    layout->addLayout(headerLayout);
+    layout->addLayout(filterLayout);
+    layout->addWidget(logsTable);
+
+    connect(refreshButton, &QPushButton::clicked, this, &AdminDashboard::loadLogsData);
+    connect(exportButton, &QPushButton::clicked, this, &AdminDashboard::exportLogsData);
+    connect(logsSearchEdit, &QLineEdit::textChanged, this, &AdminDashboard::filterLogsData);
+    connect(logsStatusFilter, &QComboBox::currentIndexChanged, this, &AdminDashboard::filterLogsData);
+
+    centralStack->addWidget(logsPage);
 }
 
 void AdminDashboard::setupMenuBar()
@@ -162,6 +235,9 @@ void AdminDashboard::setupMenuBar()
     QAction* refreshAction = fileMenu->addAction("&Refresh Data");
     refreshAction->setShortcut(QKeySequence::Refresh);
     connect(refreshAction, &QAction::triggered, this, &AdminDashboard::onRefreshData);
+
+    QAction* dashboardAction = fileMenu->addAction("&Dashboard");
+    connect(dashboardAction, &QAction::triggered, this, &AdminDashboard::showDashboardPage);
     
     fileMenu->addSeparator();
     QAction* backupAction = fileMenu->addAction("&Backup Database");
@@ -783,16 +859,12 @@ void AdminDashboard::refreshAllData()
 
 void AdminDashboard::showManageCustomersDialog()
 {
-    AdminManagementWindow dialog(this);
-    dialog.setModal(true);
-    dialog.exec();
+    showManagementPage(false);
 }
 
 void AdminDashboard::showManageAccountsDialog()
 {
-    AdminManagementWindow dialog(this);
-    dialog.showAccountsTab();
-    dialog.exec();
+    showManagementPage(true);
     return;
 
     QMessageBox::information(this, "Manage Accounts", 
@@ -876,6 +948,9 @@ void AdminDashboard::showBackupDialog()
 
 void AdminDashboard::showLogsDialog()
 {
+    showLogsPage();
+    return;
+
     QDialog dialog(this);
     dialog.setWindowTitle("System Logs");
     dialog.setMinimumSize(1000, 650);
@@ -1075,9 +1150,156 @@ void AdminDashboard::showStatusMessage(const QString& message, bool isError)
     }
 }
 
+void AdminDashboard::showDashboardPage()
+{
+    refreshAllData();
+    centralStack->setCurrentWidget(centralWidget);
+}
+
+void AdminDashboard::showManagementPage(bool accountsTab)
+{
+    if (accountsTab) {
+        managementPage->showAccountsTab();
+    } else {
+        managementPage->showCustomersTab();
+    }
+    centralStack->setCurrentWidget(managementPage);
+}
+
+void AdminDashboard::showLogsPage()
+{
+    loadLogsData();
+    centralStack->setCurrentWidget(logsPage);
+}
+
+void AdminDashboard::loadLogsData()
+{
+    logsTable->setSortingEnabled(false);
+    logsTable->setRowCount(0);
+
+    QSqlDatabase db = QSqlDatabase::database();
+    if (!db.isValid() || !db.isOpen()) {
+        showStatusMessage("Database connection is not available.", true);
+        logsTable->setSortingEnabled(true);
+        return;
+    }
+
+    QSqlQuery query(db);
+    query.prepare(
+        "SELECT l.timestamp AS event_time, COALESCE(u.username, 'System') AS username, "
+        "l.action AS action, l.description AS description, l.status AS status, "
+        "COALESCE(l.ip_address, '') AS ip_address, 'Audit' AS source "
+        "FROM audit_logs l "
+        "LEFT JOIN users u ON u.user_id = l.user_id "
+        "UNION ALL "
+        "SELECT f.attempt_time AS event_time, f.username AS username, "
+        "'Failed Login' AS action, f.reason AS description, 'FAILED' AS status, "
+        "COALESCE(f.ip_address, '') AS ip_address, 'Security' AS source "
+        "FROM failed_login_attempts f "
+        "ORDER BY event_time DESC "
+        "LIMIT 500");
+
+    if (!query.exec()) {
+        showStatusMessage("Failed to load logs: " + query.lastError().text(), true);
+        logsTable->setSortingEnabled(true);
+        return;
+    }
+
+    int row = 0;
+    while (query.next()) {
+        logsTable->insertRow(row);
+        const QStringList values = {
+            query.value("event_time").toString(),
+            query.value("username").toString(),
+            query.value("action").toString(),
+            query.value("status").toString(),
+            query.value("ip_address").toString(),
+            query.value("source").toString(),
+            query.value("description").toString()
+        };
+
+        for (int col = 0; col < values.size(); ++col) {
+            auto* item = new QTableWidgetItem(values[col]);
+            if (col == 3) {
+                const QString value = values[col].toUpper();
+                if (value == "SUCCESS") {
+                    item->setForeground(QBrush(QColor("#2e7d32")));
+                } else if (value == "FAILED") {
+                    item->setForeground(QBrush(QColor("#d32f2f")));
+                } else {
+                    item->setForeground(QBrush(QColor("#f57c00")));
+                }
+            }
+            logsTable->setItem(row, col, item);
+        }
+        ++row;
+    }
+
+    logsTable->setSortingEnabled(true);
+    filterLogsData();
+}
+
+void AdminDashboard::filterLogsData()
+{
+    const QString searchText = logsSearchEdit->text().trimmed().toLower();
+    const QString selectedStatus = logsStatusFilter->currentData().toString();
+
+    for (int row = 0; row < logsTable->rowCount(); ++row) {
+        bool matchesText = searchText.isEmpty();
+        for (int col = 0; col < logsTable->columnCount() && !matchesText; ++col) {
+            QTableWidgetItem* item = logsTable->item(row, col);
+            matchesText = item && item->text().toLower().contains(searchText);
+        }
+
+        QTableWidgetItem* statusItem = logsTable->item(row, 3);
+        const bool matchesStatus = selectedStatus == "ALL" ||
+            (statusItem && statusItem->text().compare(selectedStatus, Qt::CaseInsensitive) == 0);
+        logsTable->setRowHidden(row, !(matchesText && matchesStatus));
+    }
+}
+
+void AdminDashboard::exportLogsData()
+{
+    const QString fileName = QFileDialog::getSaveFileName(
+        this,
+        "Export Logs",
+        QString("system_logs_%1.csv").arg(QDateTime::currentDateTime().toString("yyyyMMdd_hhmmss")),
+        "CSV Files (*.csv)");
+
+    if (fileName.isEmpty()) {
+        return;
+    }
+
+    QFile file(fileName);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        QMessageBox::warning(this, "Export Logs", "Unable to write the selected file.");
+        return;
+    }
+
+    QTextStream out(&file);
+    QStringList headers;
+    for (int col = 0; col < logsTable->columnCount(); ++col) {
+        headers << logsTable->horizontalHeaderItem(col)->text();
+    }
+    out << headers.join(',') << '\n';
+
+    for (int row = 0; row < logsTable->rowCount(); ++row) {
+        if (logsTable->isRowHidden(row)) {
+            continue;
+        }
+
+        QStringList rowValues;
+        for (int col = 0; col < logsTable->columnCount(); ++col) {
+            QString value = logsTable->item(row, col) ? logsTable->item(row, col)->text() : QString();
+            value.replace('"', "\"\"");
+            rowValues << QString("\"%1\"").arg(value);
+        }
+        out << rowValues.join(',') << '\n';
+    }
+}
+
 void AdminDashboard::closeEvent(QCloseEvent* event)
 {
-    emit logoutRequested();
     QMainWindow::closeEvent(event);
 }
 
@@ -1157,12 +1379,14 @@ void AdminDashboard::onActivityDoubleClicked(int row, int column)
 
 void AdminDashboard::onLogout()
 {
+    bankService->logout();
     emit logoutRequested();
+    close();
 }
 
 void AdminDashboard::onExit()
 {
-    close();
+    QApplication::quit();
 }
 
 void AdminDashboard::onRefreshData()

@@ -7,6 +7,7 @@
 #include <QMainWindow>
 
 #include "core/User.h"
+#include "core/BankService.h"
 #include "security/DatabaseManager.h"
 #include "security/AuthManager.h"
 #include "security/Logger.h"
@@ -60,6 +61,9 @@ int main(int argc, char *argv[])
 
     logger->info(Logger::SYSTEM, "Database connected successfully");
 
+    BankService* bankService = BankService::getInstance();
+    bankService->initialize(dbHostname, dbName, dbUsername, dbPassword);
+
     // Initialize AuthManager
     AuthManager* authManager = AuthManager::getInstance();
     authManager->initialize();
@@ -76,9 +80,17 @@ int main(int argc, char *argv[])
         QMainWindow* dashboard = nullptr;
 
         if (role.compare("ADMIN", Qt::CaseInsensitive) == 0) {
-            dashboard = new AdminDashboard(userId, username);
+            auto* adminDashboard = new AdminDashboard(userId, username);
+            QObject::connect(adminDashboard, &AdminDashboard::logoutRequested, []() {
+                AuthManager::getInstance()->logout();
+            });
+            dashboard = adminDashboard;
         } else {
-            dashboard = new CustomerDashboard(userId, username);
+            auto* customerDashboard = new CustomerDashboard(userId, username);
+            QObject::connect(customerDashboard, &CustomerDashboard::logoutRequested, []() {
+                AuthManager::getInstance()->logout();
+            });
+            dashboard = customerDashboard;
         }
 
         QObject::connect(dashboard, &QObject::destroyed, &loginWindow, &LoginWindow::show);

@@ -899,7 +899,6 @@ void CustomerDashboard::showStatusMessage(const QString& message, bool isError)
 
 void CustomerDashboard::closeEvent(QCloseEvent* event)
 {
-    emit logoutRequested();
     QMainWindow::closeEvent(event);
 }
 
@@ -999,12 +998,14 @@ void CustomerDashboard::onTransactionDoubleClicked(int row, int column)
 
 void CustomerDashboard::onLogout()
 {
+    bankService->logout();
     emit logoutRequested();
+    close();
 }
 
 void CustomerDashboard::onExit()
 {
-    close();
+    QApplication::quit();
 }
 
 void CustomerDashboard::onRefreshData()

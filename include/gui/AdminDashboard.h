@@ -9,6 +9,8 @@
 #include <QHBoxLayout>
 #include <QGridLayout>
 #include <QFrame>
+#include <QComboBox>
+#include <QLineEdit>
 #include <QScrollArea>
 #include <QTableWidget>
 #include <QProgressBar>
@@ -16,6 +18,7 @@
 #include <QMenuBar>
 #include <QStatusBar>
 #include <QSplitter>
+#include <QStackedWidget>
 #include <memory>
 
 class BankService;
@@ -41,7 +44,13 @@ private:
     
     // Main widgets
     QWidget* centralWidget;
+    QStackedWidget* centralStack;
     QSplitter* mainSplitter;
+    QWidget* logsPage;
+    QTableWidget* logsTable;
+    QLineEdit* logsSearchEdit;
+    QComboBox* logsStatusFilter;
+    AdminManagementWindow* managementPage;
     
     // Left panel - Statistics and quick actions
     QFrame* leftPanel;
@@ -114,6 +123,7 @@ private:
     
     // UI setup
     void setupUI();
+    void setupLogsPage();
     void setupMenuBar();
     void setupStatusBar();
     void setupLeftPanel();
@@ -144,6 +154,12 @@ private:
     void showLogsDialog();
     void showStatusMessage(const QString& message, bool isError = false);
     void updateWelcomeMessage();
+    void showDashboardPage();
+    void showManagementPage(bool accountsTab);
+    void showLogsPage();
+    void loadLogsData();
+    void filterLogsData();
+    void exportLogsData();
 
 protected:
     void closeEvent(QCloseEvent* event) override;
