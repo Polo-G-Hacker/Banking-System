@@ -29,11 +29,11 @@ int main(int argc, char *argv[])
     // Initialize DatabaseManager
     DatabaseManager* dbManager = DatabaseManager::getInstance();
     
-    // Database connection parameters - UPDATE THESE WITH YOUR MYSQL CREDENTIALS
+    // MySQL connection parameters. If QMYSQL is unavailable, DatabaseManager falls back to SQLite.
     QString dbHostname = "localhost";
     QString dbName = "banking_system";
     QString dbUsername = "root";
-    QString dbPassword = "adrien@12"; // SET YOUR MYSQL PASSWORD HERE
+    QString dbPassword = "adrien@12"; // Used only when MySQL/QMYSQL is available
     
     bool connected = dbManager->connect(dbHostname, dbName, dbUsername, dbPassword);
     
@@ -50,10 +50,10 @@ int main(int argc, char *argv[])
                              "Qt error: " + databaseError + "\n"
                              "Available SQL drivers: " + driverList + "\n\n"
                              "Please ensure:\n"
-                             "1. MySQL is running\n"
-                             "2. Database 'banking_system' exists\n"
-                             "3. Your MySQL credentials are correct\n"
-                             "4. You have imported the schema.sql file");
+                             "1. MySQL is running if using QMYSQL\n"
+                             "2. Database 'banking_system' exists if using MySQL\n"
+                             "3. Your MySQL credentials are correct if using MySQL\n"
+                             "4. Qt has either the QMYSQL or QSQLITE driver available");
         logger->error(Logger::SYSTEM, "Failed to connect to database - exiting");
         return -1;
     }

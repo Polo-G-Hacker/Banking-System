@@ -1,5 +1,6 @@
 -- Banking System Database Schema
--- MySQL Database
+-- MySQL database schema
+-- SQLite fallback tables are initialized by src/security/DatabaseManager.cpp.
 
 CREATE DATABASE IF NOT EXISTS banking_system;
 USE banking_system;

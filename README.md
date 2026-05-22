@@ -8,7 +8,7 @@ The system follows a **layered architecture** with clear separation of concerns:
 
 - **Presentation Layer** (Qt GUI) - Modern, responsive user interface
 - **Business Logic Layer** (C++ Classes) - Core banking operations and business rules
-- **Data Access Layer** (MySQL + Qt SQL) - Database operations and persistence
+- **Data Access Layer** (MySQL/SQLite + Qt SQL) - Database operations and persistence
 
 ## 🚀 Features
 
@@ -52,7 +52,8 @@ The system follows a **layered architecture** with clear separation of concerns:
 
 ### Prerequisites
 - **Qt 6.x** (Core, Widgets, SQL, Network modules)
-- **MySQL 8.0+** database server
+- **MySQL 8.0+** database server for the primary database setup
+- **SQLite** fallback through Qt's built-in `QSQLITE` driver when `QMYSQL` is unavailable
 - **CMake 3.16+** build system
 - **C++17** compatible compiler
 
@@ -64,10 +65,17 @@ The system follows a **layered architecture** with clear separation of concerns:
 ## 🛠️ Installation
 
 ### 1. Database Setup
+
+The application uses MySQL when Qt's `QMYSQL` driver is available. If that driver is not installed, it automatically falls back to SQLite and creates a local `banking_system.sqlite` database file.
+
+#### MySQL setup
 ```sql
 -- Create the database and import the schema
 mysql -u root -p < database/schema.sql
 ```
+
+#### SQLite fallback
+No manual setup is required for SQLite. The app initializes the SQLite schema automatically on first run.
 
 ### 2. Build Configuration
 ```bash
@@ -88,7 +96,7 @@ Edit `src/main.cpp` to configure your database connection:
 QString dbHostname = "localhost";
 QString dbName = "banking_system";
 QString dbUsername = "root";
-QString dbPassword = "your_mysql_password";
+QString dbPassword = "your_mysql_password"; // Used only when MySQL/QMYSQL is available
 ```
 
 ## 🏃‍♂️ Usage
@@ -119,7 +127,7 @@ Banking System/
 ├── CMakeLists.txt              # Main build configuration
 ├── README.md                   # This file
 ├── database/
-│   └── schema.sql              # MySQL database schema
+│   └── schema.sql              # MySQL schema; SQLite schema is initialized in code
 ├── include/
 │   ├── core/                   # Business logic headers
 │   │   ├── User.h
@@ -156,11 +164,13 @@ Banking System/
 ## 🔧 Configuration
 
 ### Database Connection
-Configure MySQL connection in `src/main.cpp`:
+Configure the MySQL connection in `src/main.cpp`. These values are used when Qt can load the `QMYSQL` driver:
 - Hostname: Database server address
 - Database name: `banking_system`
 - Username: MySQL user with appropriate privileges
 - Password: MySQL user password
+
+If `QMYSQL` is unavailable, the app uses Qt's `QSQLITE` driver instead and stores data in a local SQLite file named `banking_system.sqlite`.
 
 ### Security Settings
 - Session timeout: 5 minutes (configurable)
@@ -174,10 +184,12 @@ Configure MySQL connection in `src/main.cpp`:
 The project structure supports unit testing. Create test files in a `tests/` directory and integrate with CMake.
 
 ### Integration Testing
-Test database connectivity:
+Test MySQL database connectivity:
 ```bash
 mysql -u root -p -e "USE banking_system; SHOW TABLES;"
 ```
+
+For SQLite fallback, launch the app and confirm that `banking_system.sqlite` is created in the app data directory.
 
 ### Security Testing
 - Test account locking with failed login attempts
@@ -252,6 +264,8 @@ mysql -u root -p -e "USE banking_system; SHOW TABLES;"
 ### Common Issues
 
 #### Database Connection Failed
+The application first tries MySQL through Qt's `QMYSQL` driver. If that driver is missing, it falls back to SQLite through `QSQLITE`.
+
 ```bash
 # Check MySQL service status
 sudo systemctl status mysql
@@ -276,7 +290,8 @@ g++ --version
 ```
 
 #### Runtime Issues
-- Check database connection parameters
+- Check database connection parameters if using MySQL
+- Confirm that either the `QMYSQL` or `QSQLITE` Qt SQL driver is available
 - Verify table permissions
 - Review application logs for detailed errors
 
@@ -311,7 +326,7 @@ For technical support or questions:
 - Complete banking system implementation
 - Full security features
 - Modern Qt GUI
-- MySQL database integration
+- MySQL database integration with automatic SQLite fallback
 - Admin and customer dashboards
 - Comprehensive reporting system
 

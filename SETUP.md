@@ -34,10 +34,12 @@ This guide provides step-by-step instructions to download, install, and configur
 4. Select required components listed above
 5. Complete installation
 
-### 2. MySQL Database Server (Required)
+### 2. MySQL Database Server (Recommended)
 **Download**: https://dev.mysql.com/downloads/mysql/
 
 **Version**: MySQL 8.0+
+
+The application prefers MySQL when Qt's `QMYSQL` driver is available. If `QMYSQL` is not installed, it automatically falls back to SQLite through Qt's `QSQLITE` driver and creates a local `banking_system.sqlite` database file.
 
 **Installation Steps** (Windows):
 1. Download MySQL Community Server
@@ -151,11 +153,13 @@ Banking System/
 
 ### Step 1: Install Prerequisites
 1. Install Qt Framework (with required modules)
-2. Install MySQL Server
+2. Install MySQL Server if you want to use MySQL instead of the SQLite fallback
 3. Install CMake
 4. (Optional) Install Git
 
-### Step 2: Setup MySQL Database
+### Step 2: Setup Database
+
+#### Option A: MySQL
 1. Start MySQL service
 2. Create database and import schema:
 ```bash
@@ -172,8 +176,11 @@ USE banking_system;
 SHOW TABLES;
 ```
 
+#### Option B: SQLite fallback
+No manual database setup is required. If Qt cannot load the `QMYSQL` driver, the app uses `QSQLITE` and initializes the local SQLite database automatically.
+
 ### Step 3: Configure Database Connection
-Edit `src/main.cpp` and update these lines with your MySQL credentials:
+Edit `src/main.cpp` and update these lines with your MySQL credentials if you are using MySQL. These values are ignored by the SQLite fallback:
 
 ```cpp
 // Line 15-18 in main.cpp
@@ -240,12 +247,13 @@ cmake --build . --config Release
 - Update `CMAKE_PREFIX_PATH` to correct Qt location
 - Ensure Qt6 is installed (not Qt5)
 
-### Issue 2: MySQL Connection Failed
+### Issue 2: Database Connection Failed
 **Solution**:
-- Verify MySQL service is running
-- Check database credentials in main.cpp
-- Ensure `banking_system` database exists
-- Test with MySQL command line first
+- If using MySQL, verify the MySQL service is running
+- If using MySQL, check database credentials in main.cpp
+- If using MySQL, ensure `banking_system` database exists
+- Test with MySQL command line first when using MySQL
+- Confirm that Qt has either the `QMYSQL` or `QSQLITE` SQL driver available
 
 ### Issue 3: Build Errors
 **Solution**:
@@ -262,10 +270,10 @@ cmake --build . --config Release
 ## 📦 Quick Setup Checklist
 
 - [ ] Qt 6.x installed with required modules
-- [ ] MySQL 8.0+ installed and running
+- [ ] MySQL 8.0+ installed and running, or SQLite fallback available through Qt
 - [ ] CMake 3.16+ installed
-- [ ] Database schema imported
-- [ ] Database credentials configured
+- [ ] Database schema imported if using MySQL
+- [ ] Database credentials configured if using MySQL
 - [ ] All project files present
 - [ ] Application builds successfully
 - [ ] Admin login works
@@ -287,7 +295,7 @@ cmake --build . --config Release
 - Code comments: Inline documentation in source files
 
 ### Troubleshooting
-- Check MySQL service status
+- Check MySQL service status if using MySQL
 - Verify Qt installation paths
 - Review build logs for specific errors
 - Test database connection separately
